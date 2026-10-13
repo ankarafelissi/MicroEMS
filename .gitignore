@@ -1,0 +1,6 @@
+# 默认忽略的文件
+/shelf/
+/workspace.xml
+
+# 本地 Gurobi 许可
+gurobi.lic
