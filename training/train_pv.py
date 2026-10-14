@@ -1,14 +1,15 @@
 """
-输入：甘肃光伏数据（17维气象特征，96个时间步）
+输入：前一天的甘肃光伏与气象数据（17维特征，96个时间步）
+目标：下一天的96点实际光伏功率
 """
 
+import copy
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -19,6 +20,8 @@ plt.rcParams['axes.unicode_minus'] = False
 
 # ===================== 超参数配置 =====================
 DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "gansu_pv.csv"
+OUTPUT_DIR = Path(__file__).resolve().parents[1] / 'outputs' / 'pv'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 SEQ_LEN = 96
 NUM_FEATURES = 17
 PRED_LEN = 96
@@ -48,8 +51,16 @@ print(f"[*] 使用设备: {DEVICE}")
 print("\n[Step 1] 数据加载与预处理")
 print("-" * 50)
 
-# 保留原来的前500天；跳过前三列时间信息，其余列与原npy一致。
-data = pd.read_csv(DATA_PATH, nrows=500 * 96).iloc[:, 3:].to_numpy(dtype=float)
+# 使用已整理好的前500天数据。
+df = pd.read_csv(DATA_PATH, nrows=500 * 96)
+feature_columns = [
+    '气温', '方位角', '云层不透明度', '露点温度',
+    'DHI（太阳散射辐射指数）', 'DNI（太阳直接辐射指数）', 'GHI（太阳总水平辐射）',
+    'GTI（固定倾角辐射）', 'GTI（跟踪倾角辐射）', '实际功率', '历史功率',
+    '大气可降水量', '相对湿度', '降雪深度', '地面气压', '高度10m风向',
+    '高度10m风速', '天顶角',
+]
+data = df[feature_columns].to_numpy(dtype=float)
 print(f"  原始数据类型: {data.dtype}, 形状: {data.shape}")
 
 # 提取17个特征并重塑为(500, 96)
@@ -60,17 +71,39 @@ for i in range(17):
 
 features = np.stack(features_list, axis=2)
 real_power96 = np.reshape(data[:, 9], (500, 96))
-target = real_power96
+# 将输入与目标错开一天，避免输入包含目标当天的实际功率。
+features = features[:-1]
+target = real_power96[1:]
 
 print(f"  特征形状: {features.shape}, 目标形状: {target.shape}")
 
-# 划分数据集
-train_features, val_test_features, train_target, val_test_target = train_test_split(
-    features, target, test_size=1 - TRAIN_RATIO, random_state=SEED)
-val_features, test_features, val_target, test_target = train_test_split(
-    val_test_features, val_test_target, test_size=VAL_RATIO / (1 - TRAIN_RATIO), random_state=SEED)
+# 按目标日期先后划分，禁止将未来样本随机混入训练集。
+n = len(features)
+n_train = int(n * TRAIN_RATIO)
+val_end = n_train + int(n * VAL_RATIO)
+train_features, train_target = features[:n_train], target[:n_train]
+val_features, val_target = features[n_train:val_end], target[n_train:val_end]
+test_features, test_target = features[val_end:], target[val_end:]
 
 print(f"  训练集: {train_features.shape}, 验证集: {val_features.shape}, 测试集: {test_features.shape}")
+
+# 只用训练输入拟合每列特征范围，目标使用训练目标的独立功率范围。
+feature_min = train_features.min(axis=(0, 1))
+feature_range = train_features.max(axis=(0, 1)) - feature_min
+feature_range[feature_range < 1e-8] = 1.0
+power_min = float(train_target.min())
+power_range = float(train_target.max() - power_min)
+if power_range < 1e-8:
+    power_range = 1.0
+
+# 验证/测试可能超出[0, 1]，保留原值，不重新拟合或裁剪。
+train_features = (train_features - feature_min) / feature_range
+val_features = (val_features - feature_min) / feature_range
+test_features = (test_features - feature_min) / feature_range
+train_target = (train_target - power_min) / power_range
+val_target = (val_target - power_min) / power_range
+test_target = (test_target - power_min) / power_range
+print("  归一化参数仅由训练集拟合；指标和功率图在反归一化后计算")
 
 # 转为Tensor
 train_features = torch.FloatTensor(train_features).to(DEVICE)
@@ -191,7 +224,28 @@ for epoch in range(EPOCHS):
 
     if val_loss < best_val_loss:
         best_val_loss = val_loss
-        best_model_state = model.state_dict().copy()
+        best_model_state = copy.deepcopy(model.state_dict())
+        checkpoint = {
+            'model_type': 'LSTMTransformerModel',
+            'model_state_dict': {k: v.cpu() for k, v in best_model_state.items()},
+            'model_config': {
+                'seq_len': SEQ_LEN, 'num_features': NUM_FEATURES, 'pred_len': PRED_LEN,
+                'd_model': D_MODEL, 'lstm_hid': LSTM_HID, 'lstm_layers': LSTM_LAYERS,
+                'nhead': NHEAD, 'transformer_layers': NUM_TRANSFORMER_LAYERS,
+                'dim_feedforward': DIM_FEEDFORWARD, 'dropout': DROPOUT,
+            },
+            'feature_columns': feature_columns[:NUM_FEATURES],
+            'normalization': {
+                'feature_min': feature_min.tolist(), 'feature_range': feature_range.tolist(),
+                'target_min': power_min, 'target_range': power_range,
+            },
+            'best_epoch': epoch + 1, 'best_val_loss': best_val_loss,
+            'sampling_minutes': 15, 'power_unit': 'source_data_unit',
+            'data_file': str(DATA_PATH),
+            'split_samples': [len(train_target), len(val_target), len(test_target)],
+            'training_config': {'seed': SEED, 'lr': LR, 'batch_size': BATCH_SIZE, 'epochs': EPOCHS},
+        }
+        torch.save(checkpoint, OUTPUT_DIR / 'best_model.pt')
         patience_counter = 0
     else:
         patience_counter += 1
@@ -222,8 +276,9 @@ with torch.no_grad():
         predictions.append(outputs.cpu().numpy())
         actuals.append(batch_y.cpu().numpy())
 
-predicted_power = np.concatenate(predictions, axis=0)
-test_target_np = np.concatenate(actuals, axis=0)
+# 恢复原始功率单位后，再计算指标和绘图。
+predicted_power = np.concatenate(predictions, axis=0) * power_range + power_min
+test_target_np = np.concatenate(actuals, axis=0) * power_range + power_min
 
 # 计算指标
 y_true_flat = test_target_np.flatten()
@@ -238,8 +293,10 @@ print(f"  测试集 MSE:  {mse:.6f}")
 print(f"  测试集 MAE:  {mae:.4f}")
 print(f"  测试集 RMSE: {rmse:.4f}")
 print(f"  测试集 R²:   {r2:.4f}")
+checkpoint['test_metrics'] = {'mse': float(mse), 'mae': float(mae), 'rmse': float(rmse), 'r2': float(r2)}
+torch.save(checkpoint, OUTPUT_DIR / 'best_model.pt')
 
-# ===================== 5. 可视化（与负荷预测程序对齐） =====================
+# ===================== 5. 保存两张关键图 =====================
 print("\n[Step 5] 生成可视化")
 print("-" * 50)
 
@@ -248,55 +305,37 @@ fig1, ax1 = plt.subplots(figsize=(10, 6))
 ax1.plot(range(1, len(train_losses) + 1), train_losses, 'b-', linewidth=2, marker='o', markersize=4, label='训练损失')
 ax1.plot(range(1, len(val_losses) + 1), val_losses, 'r-', linewidth=2, marker='s', markersize=4, label='验证损失')
 ax1.set_xlabel('训练轮次', fontsize=12)
-ax1.set_ylabel('MSE损失', fontsize=12)
+ax1.set_ylabel('MSE损失（归一化尺度）', fontsize=12)
 ax1.set_title('LSTM-Transformer训练损失曲线', fontsize=14)
 ax1.legend(fontsize=11)
 ax1.grid(True, alpha=0.3)
 plt.tight_layout()
+fig1.savefig(OUTPUT_DIR / 'loss_curve.png', dpi=180)
+plt.close(fig1)
 
-# 图2：4天预测对比（2×2子图，与负荷预测对齐）
+# 图2：均匀选取4个测试样本的预测对比（2×2子图）
 fig2, axes = plt.subplots(nrows=2, ncols=2, figsize=(16, 10))
 axes = axes.flatten()
-time_idx = np.arange(96)
+time_idx = np.arange(PRED_LEN) * 0.25
+plot_indices = np.linspace(0, len(test_target_np) - 1, 4, dtype=int)
 
 for i in range(4):
     ax = axes[i]
-    ax.plot(time_idx, test_target_np[i], 'b-', linewidth=2, label='真实值', alpha=0.8)
-    ax.plot(time_idx, predicted_power[i], 'r--', linewidth=2, label='预测值', alpha=0.8)
-    ax.set_xlabel('时间 (15分钟间隔)', fontsize=12)
-    ax.set_ylabel('功率 (kW)', fontsize=12)
-    ax.set_title(f'第 {i + 1} 天光伏功率预测', fontsize=14)
+    idx = plot_indices[i]
+    ax.plot(time_idx, test_target_np[idx], 'b-', linewidth=2, label='真实值', alpha=0.8)
+    ax.plot(time_idx, predicted_power[idx], 'r--', linewidth=2, label='预测值', alpha=0.8)
+    ax.set_xlabel('预测起点后小时数', fontsize=12)
+    ax.set_ylabel('功率（原始数据单位）', fontsize=12)
+    ax.set_title(f'光伏测试样本 {idx + 1}', fontsize=14)
     ax.legend(fontsize=11)
     ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
 
-# 图3：散点图（真实值 vs 预测值，与负荷预测对齐）
-fig3, ax3 = plt.subplots(figsize=(8, 8))
-ax3.scatter(y_true_flat, y_pred_flat, alpha=0.3, s=10, c='#1f77b4')
-min_val = min(y_true_flat.min(), y_pred_flat.min())
-max_val = max(y_true_flat.max(), y_pred_flat.max())
-ax3.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='理想线')
-ax3.set_xlabel('真实功率 (kW)', fontsize=12)
-ax3.set_ylabel('预测功率 (kW)', fontsize=12)
-ax3.set_title(f'真实值 vs 预测值 (RMSE={rmse:.2f}, R²={r2:.4f})', fontsize=14)
-ax3.legend(fontsize=11)
-ax3.grid(True, alpha=0.3)
-plt.tight_layout()
-
-# 图4：残差分布直方图（与负荷预测对齐）
 residuals = y_pred_flat - y_true_flat
-fig4, ax4 = plt.subplots(figsize=(10, 6))
-ax4.hist(residuals, bins=50, color='#5B9BD5', edgecolor='black', alpha=0.7)
-ax4.axvline(x=0, color='r', linestyle='--', linewidth=2, label='零误差线')
-ax4.set_xlabel('预测误差 (kW)', fontsize=12)
-ax4.set_ylabel('频数', fontsize=12)
-ax4.set_title('预测残差分布', fontsize=14)
-ax4.legend(fontsize=11)
-ax4.grid(True, axis='y', alpha=0.3)
-plt.tight_layout()
-
-plt.show()
+fig2.savefig(OUTPUT_DIR / 'forecast_comparison.png', dpi=180)
+plt.close(fig2)
+print(f'Saved best model and two figures: {OUTPUT_DIR}')
 
 # ===================== 结果汇总 =====================
 print("\n" + "=" * 50)

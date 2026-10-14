@@ -13,7 +13,6 @@ from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 import matplotlib
 import warnings
-import os
 from pathlib import Path
 
 # 中文配置
@@ -23,6 +22,8 @@ warnings.filterwarnings('ignore')
 
 # ===================== 超参数配置 =====================
 DATA_PATH = Path(__file__).resolve().parents[1] / 'data' / 'quanzhou_load.csv'
+OUTPUT_DIR = Path(__file__).resolve().parents[1] / 'outputs' / 'load'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 WINDOW_SIZE = 96 * 7  # 输入：过去7天 = 672个点
 HORIZON = 96  # 输出：预测未来1天 = 96个点
 NUM_FEATURES = 4  # 特征维度：温度、湿度、降雨量、负荷
@@ -48,12 +49,11 @@ print(f"[*] 使用设备: {DEVICE}")
 print("\n[Step 1] 数据加载与预处理")
 print("-" * 50)
 
-if not os.path.exists(DATA_PATH):
-    raise FileNotFoundError(f"找不到文件: {DATA_PATH}")
-
 df = pd.read_csv(DATA_PATH)
 df['times'] = pd.to_datetime(df['times'])
 df = df.sort_values('times').reset_index(drop=True)
+input_columns = ['平均温度℃', '相对湿度(平均)', '降雨量（mm）', '负荷']
+df[input_columns] = df[input_columns].astype(float)
 print(f"  原始数据行数: {len(df)}")
 
 # 提取4个特征
@@ -63,40 +63,57 @@ features['humidity'] = df['相对湿度(平均)'].values
 features['precipitation'] = df['降雨量（mm）'].values
 features['load'] = df['负荷'].values
 
-# 填充缺失值
-features = features.ffill().bfill().fillna(0)
+# 输入仅使用过去值，最多连续填补2点（30分钟）；目标保留原始实测值。
+features = features.replace([np.inf, -np.inf], np.nan)
+observed_load = features['load'].to_numpy(copy=True)
+features = features.ffill(limit=2)
 raw_data = features.values
 
-# 归一化（Min-Max）
-data_min = raw_data.min(axis=0)
-data_max = raw_data.max(axis=0)
+# 先确定训练目标的结束边界（右端点不包含），仅拟合训练时期的数据。
+target_points = len(raw_data) - WINDOW_SIZE
+train_end = WINDOW_SIZE + int(target_points * TRAIN_RATIO)
+val_end = train_end + int(target_points * VAL_RATIO)
+
+# 归一化（Min-Max）：验证/测试只复用参数，不重新拟合或裁剪。
+data_min = np.nanmin(raw_data[:train_end], axis=0)
+data_max = np.nanmax(raw_data[:train_end], axis=0)
 data_range = data_max - data_min
 data_range[data_range < 1e-8] = 1.0
 normalized = (raw_data - data_min) / data_range
+normalized_load = (observed_load - data_min[-1]) / data_range[-1]
+print("  归一化参数仅由训练时段拟合；指标和负荷图在反归一化后计算")
 
 # 构建时间序列样本
-X, y = [], []
+X, y, sample_starts = [], [], []
 total_need = WINDOW_SIZE + HORIZON
 for i in range(len(normalized) - total_need + 1):
-    X.append(normalized[i: i + WINDOW_SIZE])
-    y.append(normalized[i + WINDOW_SIZE: i + total_need, -1])  # 只预测负荷列
+    history = normalized[i: i + WINDOW_SIZE]
+    future_load = normalized_load[i + WINDOW_SIZE: i + total_need]
+    if not np.isfinite(history).all() or not np.isfinite(future_load).all():
+        continue
+    X.append(history)
+    y.append(future_load)
+    sample_starts.append(i)
 X = np.array(X)
 y = np.array(y)
 
 n = len(X)
-n_train = int(n * TRAIN_RATIO)
-n_val = int(n * VAL_RATIO)
-indices = np.random.permutation(n)
+# 按可预测时间段划分边界；跨越边界的96点目标窗口不属于任何集合。
+# 跳过缺失窗口后仍使用原始行号，避免压缩时间导致划分错误。
+target_start = np.array(sample_starts, dtype=int) + WINDOW_SIZE
+target_end = target_start + HORIZON  # 右端点不包含
 
-train_idx = indices[:n_train]
-val_idx = indices[n_train:n_train + n_val]
-test_idx = indices[n_train + n_val:]
+train_idx = np.flatnonzero(target_end <= train_end)
+val_idx = np.flatnonzero((target_start >= train_end) & (target_end <= val_end))
+test_idx = np.flatnonzero(target_start >= val_end)
 
 X_train, y_train = X[train_idx], y[train_idx]
 X_val, y_val = X[val_idx], y[val_idx]
 X_test, y_test = X[test_idx], y[test_idx]
 
 print(f"  序列样本: {n}, 训练: {len(X_train)}, 验证: {len(X_val)}, 测试: {len(X_test)}")
+print(f"  排除缺失样本: {max(0, len(normalized) - total_need + 1) - n}")
+print(f"  排除跨边界样本: {n - len(train_idx) - len(val_idx) - len(test_idx)}")
 
 
 # 创建Dataset和DataLoader
@@ -160,6 +177,7 @@ print("-" * 50)
 
 train_losses = []
 val_losses = []
+best_val_loss = float('inf')
 
 for epoch in range(EPOCHS):
     # 训练
@@ -193,9 +211,33 @@ for epoch in range(EPOCHS):
     avg_val_loss = np.mean(val_batch_losses)
     val_losses.append(avg_val_loss)
 
+    if avg_val_loss < best_val_loss:
+        best_val_loss = float(avg_val_loss)
+        checkpoint = {
+            'model_type': 'LSTMModel',
+            'model_state_dict': {k: v.detach().cpu().clone() for k, v in model.state_dict().items()},
+            'model_config': {
+                'window_size': WINDOW_SIZE, 'horizon': HORIZON, 'num_features': NUM_FEATURES,
+                'lstm_hid': LSTM_HID, 'lstm_layers': LSTM_LAYERS, 'dropout': DROPOUT,
+            },
+            'feature_columns': input_columns,
+            'normalization': {
+                'feature_min': data_min.tolist(), 'feature_range': data_range.tolist(),
+                'target_min': float(data_min[-1]), 'target_range': float(data_range[-1]),
+            },
+            'best_epoch': epoch + 1, 'best_val_loss': best_val_loss,
+            'sampling_minutes': 15, 'power_unit': 'source_data_unit',
+            'data_file': str(DATA_PATH),
+            'split_samples': [len(y_train), len(y_val), len(y_test)],
+            'training_config': {'seed': SEED, 'lr': LR, 'batch_size': BATCH_SIZE, 'epochs': EPOCHS},
+        }
+        torch.save(checkpoint, OUTPUT_DIR / 'best_model.pt')
+
     print(f"  Epoch {epoch + 1:2d}/{EPOCHS} - 训练Loss: {avg_train_loss:.6f}, 验证Loss: {avg_val_loss:.6f}")
 
 print("\n  训练完成!")
+model.load_state_dict(checkpoint['model_state_dict'])
+print(f"  已加载第{checkpoint['best_epoch']}轮最佳权重")
 
 # ===================== 4. 模型评估 =====================
 print("\n[Step 4] 模型评估")
@@ -234,8 +276,10 @@ smape = 200 * np.mean(numerator / denominator)
 
 print(f"  测试集 RMSE: {rmse:.2f} kW")
 print(f"  测试集 SMAPE: {smape:.2f} p.u.")
+checkpoint['test_metrics'] = {'rmse': float(rmse), 'smape_percent': float(smape)}
+torch.save(checkpoint, OUTPUT_DIR / 'best_model.pt')
 
-# ===================== 5. 可视化 =====================
+# ===================== 5. 保存两张关键图 =====================
 print("\n[Step 5] 生成可视化")
 print("-" * 50)
 
@@ -244,55 +288,37 @@ fig1, ax1 = plt.subplots(figsize=(10, 6))
 ax1.plot(range(1, EPOCHS + 1), train_losses, 'b-', linewidth=2, marker='o', markersize=4, label='训练损失')
 ax1.plot(range(1, EPOCHS + 1), val_losses, 'r-', linewidth=2, marker='s', markersize=4, label='验证损失')
 ax1.set_xlabel('训练轮次', fontsize=12)
-ax1.set_ylabel('MSE损失', fontsize=12)
+ax1.set_ylabel('MSE损失（归一化尺度）', fontsize=12)
 ax1.set_title('LSTM训练损失曲线', fontsize=14)
 ax1.legend(fontsize=11)
 ax1.grid(True, alpha=0.3)
 plt.tight_layout()
+fig1.savefig(OUTPUT_DIR / 'loss_curve.png', dpi=180)
+plt.close(fig1)
 
-# 图2：4天预测对比（2×2子图）
+# 图2：均匀选取4个测试窗口，避免只展示相邻的重叠窗口
 fig2, axes = plt.subplots(nrows=2, ncols=2, figsize=(16, 10))
 axes = axes.flatten()
-time_idx = np.arange(96)
+time_idx = np.arange(HORIZON) * 0.25
+plot_indices = np.linspace(0, len(true_denorm) - 1, 4, dtype=int)
 
 for i in range(4):
     ax = axes[i]
-    ax.plot(time_idx, true_denorm[i], 'b-', linewidth=2, label='真实值', alpha=0.8)
-    ax.plot(time_idx, preds_denorm[i], 'r--', linewidth=2, label='预测值', alpha=0.8)
-    ax.set_xlabel('时间 (15分钟间隔)', fontsize=12)
-    ax.set_ylabel('负荷 (kW)', fontsize=12)
-    ax.set_title(f'第 {i + 1} 天电力负荷预测', fontsize=14)
+    idx = plot_indices[i]
+    ax.plot(time_idx, true_denorm[idx], 'b-', linewidth=2, label='真实值', alpha=0.8)
+    ax.plot(time_idx, preds_denorm[idx], 'r--', linewidth=2, label='预测值', alpha=0.8)
+    ax.set_xlabel('预测起点后小时数', fontsize=12)
+    ax.set_ylabel('负荷（原始数据单位）', fontsize=12)
+    ax.set_title(f'负荷测试样本 {idx + 1}', fontsize=14)
     ax.legend(fontsize=11)
     ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
 
-# 图3：散点图（真实值 vs 预测值）
-fig3, ax3 = plt.subplots(figsize=(8, 8))
-ax3.scatter(y_true_flat, y_pred_flat, alpha=0.3, s=10, c='#1f77b4')
-min_val = min(y_true_flat.min(), y_pred_flat.min())
-max_val = max(y_true_flat.max(), y_pred_flat.max())
-ax3.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='理想线')
-ax3.set_xlabel('真实负荷 (kW)', fontsize=12)
-ax3.set_ylabel('预测负荷 (kW)', fontsize=12)
-ax3.set_title(f'真实值 vs 预测值 (RMSE={rmse:.2f}, SMAPE={smape:.2f})', fontsize=14)
-ax3.legend(fontsize=11)
-ax3.grid(True, alpha=0.3)
-plt.tight_layout()
-
-# 图4：残差分布直方图
 residuals = y_pred_flat - y_true_flat
-fig4, ax4 = plt.subplots(figsize=(10, 6))
-ax4.hist(residuals, bins=50, color='#5B9BD5', edgecolor='black', alpha=0.7)
-ax4.axvline(x=0, color='r', linestyle='--', linewidth=2, label='零误差线')
-ax4.set_xlabel('预测误差 (kW)', fontsize=12)
-ax4.set_ylabel('频数', fontsize=12)
-ax4.set_title('预测残差分布', fontsize=14)
-ax4.legend(fontsize=11)
-ax4.grid(True, axis='y', alpha=0.3)
-plt.tight_layout()
-
-plt.show()
+fig2.savefig(OUTPUT_DIR / 'forecast_comparison.png', dpi=180)
+plt.close(fig2)
+print(f'Saved best model and two figures: {OUTPUT_DIR}')
 
 # ===================== 结果汇总 =====================
 print("\n" + "=" * 50)

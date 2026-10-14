@@ -4,3 +4,13 @@
 
 # 本地 Gurobi 许可
 gurobi.lic
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Training outputs
+/outputs/
+
+# Local development log
+/DEVELOPMENT_LOG.md
