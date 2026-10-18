@@ -19,8 +19,7 @@ import logging
 from influxdb import InfluxDBClient
 import pandas as pd
 import numpy as np
-import torch
-import torch.nn as nn
+from predict import DEVICE, predict_load, predict_pv
 from scipy import interpolate
 import matplotlib
 import warnings
@@ -36,9 +35,6 @@ matplotlib.rcParams['axes.unicode_minus'] = False
 matplotlib.rcParams['font.family'] = 'sans-serif'
 matplotlib.rcParams['font.sans-serif'] = ['FangSong']
 warnings.filterwarnings('ignore')
-
-# 设备配置
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # ===================== 配置参数 =====================
 class Config:
@@ -112,10 +108,10 @@ class InfluxDBManager:
             print(f"[数据库] 已删除旧数据库: {config.DB_EMS}")
         except:
             pass
-        
+
         self.client.create_database(config.DB_EMS)
         print(f"[数据库] 已创建新数据库: {config.DB_EMS}")
-    
+
     def write_point(self, database, measurement, fields, tags=None, time=None):
         """写入单条数据"""
         json_body = [{
@@ -133,48 +129,26 @@ class InfluxDBManager:
             return False
 
 
-# ===================== 成品预测程序调用 =====================
+# ===================== 训练模型预测 =====================
 class Forecaster:
-    """预测器：直接调用成品预测程序"""
+    """使用最佳模型预测，保留调度所需的功率缩放。"""
     def __init__(self):
         self.db = InfluxDBManager()
     
     def run_pv_forecast(self):
-        """运行光伏预测 - 使用成品程序的逻辑"""
-        print("\n[光伏预测] 使用成品预测程序...")
+        """使用前500天中的最后一天，预测其后一天的光伏功率。"""
+        print("\n[光伏预测] 使用训练好的LSTM-Transformer模型...")
         
         # 加载甘肃光伏数据
-        # 保留原来的前500天；跳过前三列时间信息，其余列与原npy一致。
-        data = pd.read_csv(config.PV_DATA_PATH, nrows=500 * 96).iloc[:, 3:].to_numpy(dtype=float)
+        # 保留训练时使用的前500天，预测函数按保存的列名选择特征。
+        history = pd.read_csv(config.PV_DATA_PATH, nrows=500 * 96)
         
-        # 提取特征和功率（使用最后一天的数据进行预测演示）
-        features_list = []
-        for i in range(17):
-            feature_96 = np.reshape(data[:, i], (500, 96))
-            features_list.append(feature_96)
-        
-        features = np.stack(features_list, axis=2)
-        real_power = np.reshape(data[:, 9], (500, 96))
-        
-        # 使用最后一条样本作为输入，倒数第二条作为历史参考
-        # 这里简化处理：使用历史数据的平均值作为预测（实际应调用训练好的模型）
-        # 为了演示，我们使用一个基于历史模式的简单预测
-        
-        # 使用最近几天的平均模式作为预测
-        recent_days = real_power[-5:-1]  # 最近4天
-        pv_forecast = np.mean(recent_days, axis=0)  # 平均作为预测
-        
-        # 添加一些随机波动使预测更真实
-        noise = np.random.normal(0, 0.05, pv_forecast.shape)
-        pv_forecast = pv_forecast * (1 + noise)
-        
-        # 确保非负
-        pv_forecast = np.maximum(pv_forecast, 0)
+        pv_forecast = predict_pv(history)
         
         # 量级缩放
         pv_forecast_scaled = pv_forecast * config.PV_SCALE
         
-        print(f"[光伏预测] 完成，原始范围: {pv_forecast.min():.2f} - {pv_forecast.max():.2f} W")
+        print(f"[光伏预测] 完成，原始范围: {pv_forecast.min():.2f} - {pv_forecast.max():.2f}（原始数据单位）")
         print(f"[光伏预测] 缩放后范围: {pv_forecast_scaled.min():.2f} - {pv_forecast_scaled.max():.2f} W")
         
         # 写入数据库
@@ -189,38 +163,18 @@ class Forecaster:
         return pv_forecast_scaled
     
     def run_load_forecast(self):
-        """运行负荷预测 - 使用成品程序的逻辑"""
-        print("\n[负荷预测] 使用成品预测程序...")
+        """使用CSV末尾7天的数据，预测其后24小时的负荷。"""
+        print("\n[负荷预测] 使用训练好的LSTM模型...")
         
         # 加载负荷数据
         df = pd.read_csv(config.LOAD_DATA_PATH)
-        df['times'] = pd.to_datetime(df['times'])
-        df = df.sort_values('times').reset_index(drop=True)
         
-        # 提取负荷数据
-        load_data = df['负荷'].values
-        
-        # 使用最近几天的模式作为预测（简化处理）
-        # 实际应使用LSTM模型，这里用历史平均模式演示
-        daily_loads = []
-        for i in range(0, len(load_data) - 96, 96):
-            daily_loads.append(load_data[i:i+96])
-        
-        # 使用最近几天的平均值
-        recent_loads = np.array(daily_loads[-3:])  # 最近3天
-        load_forecast = np.mean(recent_loads, axis=0)
-        
-        # 添加随机波动
-        noise = np.random.normal(0, 0.03, load_forecast.shape)
-        load_forecast = load_forecast * (1 + noise)
-        
-        # 确保非负
-        load_forecast = np.maximum(load_forecast, 0)
+        load_forecast = predict_load(df)
         
         # 量级缩放
         load_forecast_scaled = load_forecast * config.LOAD_SCALE
         
-        print(f"[负荷预测] 完成，原始范围: {load_forecast.min():.2f} - {load_forecast.max():.2f} W")
+        print(f"[负荷预测] 完成，原始范围: {load_forecast.min():.2f} - {load_forecast.max():.2f}（原始数据单位）")
         print(f"[负荷预测] 缩放后范围: {load_forecast_scaled.min():.2f} - {load_forecast_scaled.max():.2f} W")
         
         # 写入数据库
