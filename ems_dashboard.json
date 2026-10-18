@@ -48,7 +48,7 @@
         "kind": "Panel",
         "spec": {
           "id": 1,
-          "title": "当前运行模式",
+          "title": "电网状态",
           "description": "",
           "links": [],
           "data": {
@@ -83,23 +83,24 @@
                         "measurement": "operation_mode",
                         "orderByTime": "ASC",
                         "policy": "default",
-                        "query": "SELECT last(\"mode\") FROM \"operation_mode\" WHERE $timeFilter",
+                        "query": "SELECT last(\"grid_mode\") FROM \"operation_mode\" WHERE $timeFilter",
                         "resultFormat": "time_series",
                         "select": [
                           [
                             {
                               "params": [
-                                "mode"
+                                "grid_mode"
                               ],
                               "type": "field"
                             },
                             {
                               "params": [],
-                              "type": "mean"
+                              "type": "last"
                             }
                           ]
                         ],
-                        "tags": []
+                        "tags": [],
+                        "rawQuery": true
                       }
                     },
                     "refId": "A",
@@ -140,13 +141,13 @@
                       "type": "value",
                       "options": {
                         "1": {
-                          "text": "电网购电模式"
+                          "text": "购电"
                         },
                         "2": {
-                          "text": "光伏售电模式"
+                          "text": "售电"
                         },
                         "3": {
-                          "text": "自发自用模式"
+                          "text": "无交换"
                         }
                       }
                     }
@@ -1359,6 +1360,133 @@
             }
           }
         }
+      },
+      "panel-9": {
+        "kind": "Panel",
+        "spec": {
+          "id": 9,
+          "title": "电池状态",
+          "description": "",
+          "links": [],
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "query": {
+                      "kind": "DataQuery",
+                      "group": "influxdb",
+                      "version": "v0",
+                      "datasource": {
+                        "name": "eflt7d28z9gqoa"
+                      },
+                      "spec": {
+                        "groupBy": [
+                          {
+                            "params": [
+                              "$__interval"
+                            ],
+                            "type": "time"
+                          },
+                          {
+                            "params": [
+                              "null"
+                            ],
+                            "type": "fill"
+                          }
+                        ],
+                        "measurement": "operation_mode",
+                        "orderByTime": "ASC",
+                        "policy": "default",
+                        "query": "SELECT last(\"battery_mode\") FROM \"operation_mode\" WHERE $timeFilter",
+                        "resultFormat": "time_series",
+                        "select": [
+                          [
+                            {
+                              "params": [
+                                "battery_mode"
+                              ],
+                              "type": "field"
+                            },
+                            {
+                              "params": [],
+                              "type": "last"
+                            }
+                          ]
+                        ],
+                        "tags": [],
+                        "rawQuery": true
+                      }
+                    },
+                    "refId": "A",
+                    "hidden": false
+                  }
+                }
+              ],
+              "transformations": [],
+              "queryOptions": {}
+            }
+          },
+          "vizConfig": {
+            "kind": "VizConfig",
+            "group": "stat",
+            "version": "13.0.1",
+            "spec": {
+              "options": {
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "center",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              },
+              "fieldConfig": {
+                "defaults": {
+                  "mappings": [
+                    {
+                      "type": "value",
+                      "options": {
+                        "1": {
+                          "text": "充电"
+                        },
+                        "2": {
+                          "text": "放电"
+                        },
+                        "3": {
+                          "text": "待机"
+                        }
+                      }
+                    }
+                  ],
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "value": 0,
+                        "color": "blue"
+                      }
+                    ]
+                  },
+                  "color": {
+                    "mode": "thresholds"
+                  }
+                },
+                "overrides": []
+              }
+            }
+          }
+        }
       }
     },
     "layout": {
@@ -1370,11 +1498,24 @@
             "spec": {
               "x": 0,
               "y": 0,
-              "width": 6,
+              "width": 3,
               "height": 5,
               "element": {
                 "kind": "ElementReference",
                 "name": "panel-1"
+              }
+            }
+          },
+          {
+            "kind": "GridLayoutItem",
+            "spec": {
+              "x": 3,
+              "y": 0,
+              "width": 3,
+              "height": 5,
+              "element": {
+                "kind": "ElementReference",
+                "name": "panel-9"
               }
             }
           },

@@ -345,18 +345,6 @@ class Optimizer:
             # 更新SOC
             soc_last_time = result['soc']
             
-            # 确定运行模式
-            if p_ch[x] > 10:
-                mode = 3  # 充电模式
-            elif p_dh[x] > 10:
-                mode = 3  # 放电模式
-            elif p_b[x] > 10:
-                mode = 1  # 购电模式
-            elif p_s[x] > 10:
-                mode = 2  # 售电模式
-            else:
-                mode = 3  # 自发自用
-            
             # 打印关键信息
             hour = int(x * 0.25)
             price = self.price_buy[x] if x < len(self.price_buy) else 0
@@ -367,7 +355,7 @@ class Optimizer:
             
             # 写入数据库
             self._write_optimization_results(
-                x, result, soc_realtime[x], mode,
+                x, result, soc_realtime[x],
                 PV_15min[x], PPV_15min[x], LOAD_15min[x], Pload_15min[x]
             )
             
@@ -386,8 +374,23 @@ class Optimizer:
         
         return p_ch, p_dh, p_b, p_s, p_ab, soc_realtime
     
-    def _write_optimization_results(self, x, result, soc, mode, PV_actual, PV_forecast, LOAD_actual, LOAD_forecast):
-        """写入优化结果"""
+    def _write_optimization_results(self, x, result, soc, PV_actual, PV_forecast, LOAD_actual, LOAD_forecast):
+        """写入优化结果，电网和电池状态独立判断。"""
+        # 沿用10W阈值，忽略接近零的功率波动。
+        if result['p_b'] > 10:
+            grid_mode = 1  # 购电
+        elif result['p_s'] > 10:
+            grid_mode = 2  # 售电
+        else:
+            grid_mode = 3  # 无交换
+
+        if result['p_ch'] > 10:
+            battery_mode = 1  # 充电
+        elif result['p_dh'] > 10:
+            battery_mode = 2  # 放电
+        else:
+            battery_mode = 3  # 待机
+
         current_time = pd.Timestamp.now(tz='Asia/Shanghai')
         
         self.db.write_point(
@@ -399,7 +402,8 @@ class Optimizer:
                 "p_sell": float(result['p_s']) * -1,  # 售电功率改为负数
                 "p_ab": float(result['p_ab']),
                 "soc": float(soc) * 100,
-                "mode": int(mode),
+                "grid_mode": grid_mode,
+                "battery_mode": battery_mode,
                 "time_slot": int(x),
                 "pv_actual": float(PV_actual),
                 "pv_forecast": float(PV_forecast),
@@ -417,11 +421,12 @@ class Optimizer:
         
         self.db.write_point(
             config.DB_EMS, config.MEAS_MODE,
-            {"mode": int(mode), "time_slot": int(x)},
+            {"grid_mode": grid_mode, "battery_mode": battery_mode,
+             "time_slot": int(x)},
             time=current_time.isoformat()
         )
         
-        print(f"  [数据写入] t={x}, SOC={soc*100:.1f}%, mode={mode}, p_buy={result['p_b']:.1f}, p_sell={result['p_s']:.1f}")
+        print(f"  [数据写入] t={x}, SOC={soc*100:.1f}%, grid_mode={grid_mode}, battery_mode={battery_mode}, p_buy={result['p_b']:.1f}, p_sell={result['p_s']:.1f}")
 
 
 # ===================== 主程序 =====================
