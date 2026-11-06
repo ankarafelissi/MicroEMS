@@ -1,4 +1,15 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.defaultPackageManager": "ms-python.python:conda"
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+    "python.terminal.activateEnvironment": true,
+    "terminal.integrated.defaultProfile.windows": "EMS (.venv)",
+    "terminal.integrated.profiles.windows": {
+        "EMS (.venv)": {
+            "path": "${env:SystemRoot}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "args": [
+                "-NoExit",
+                "-Command",
+                "& '${workspaceFolder}\\.venv\\Scripts\\Activate.ps1'"
+            ]
+        }
+    }
 }

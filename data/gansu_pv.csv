@@ -1,4 +1,4 @@
-﻿采样结束时刻,采样起始时刻,时间间隔,气温,方位角,云层不透明度,露点温度,DHI（太阳散射辐射指数）,DNI（太阳直接辐射指数）,GHI（太阳总水平辐射）,GTI（固定倾角辐射）,GTI（跟踪倾角辐射）,实际功率,历史功率,大气可降水量,相对湿度,降雪深度,地面气压,高度10m风向,高度10m风速,天顶角
+﻿sampling_end_time,sampling_start_time,sampling_interval,air_temperature,azimuth,cloud_opacity,dew_point_temperature,dhi,dni,ghi,gti_fixed_tilt,gti_tracking_tilt,actual_power,historical_power,precipitable_water,relative_humidity,snow_depth,surface_pressure,wind_direction_10m,wind_speed_10m,zenith_angle
 2007-01-02T00:00:00Z,2007-01-01T23:45:00Z,PT15M,-8.6,81,0,-21.4,0,0,0,0,0,0,0,2.5,34.9,0.1,834.9,134,3.1,137
 2007-01-02T00:15:00Z,2007-01-02T00:00:00Z,PT15M,-8.8,77,0,-21.5,0,0,0,0,0,0,0,2.5,35,0.1,834.8,136,3.2,140
 2007-01-02T00:30:00Z,2007-01-02T00:15:00Z,PT15M,-9,74,0,-21.7,0,0,0,0,0,0,0,2.5,35.1,0.1,834.8,138,3.2,143

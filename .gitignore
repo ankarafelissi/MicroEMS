@@ -1,16 +1,28 @@
-# 默认忽略的文件
+# Default ignored files
 /shelf/
 /workspace.xml
 
-# 本地 Gurobi 许可
+# Local Gurobi license
 gurobi.lic
 
 # Python bytecode
 __pycache__/
 *.pyc
 
+# Local Python virtual environment
+/.venv/
+
 # Training outputs
 /outputs/
 
 # Local development log
 /DEVELOPMENT_LOG.md
+
+# Local demo state and service logs
+/runtime/
+/backups/
+
+# Deployment settings and local secrets
+.env
+.env.*
+.streamlit/secrets.toml

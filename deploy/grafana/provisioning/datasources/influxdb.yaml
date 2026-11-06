@@ -1,0 +1,15 @@
+apiVersion: 1
+datasources:
+  - name: EMS InfluxDB
+    uid: ems-influx
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    database: $EMS_INFLUX_DATABASE
+    isDefault: true
+    editable: false
+    jsonData:
+      version: InfluxQL
+      dbName: $EMS_INFLUX_DATABASE
+      httpMode: POST
+      timeInterval: 15m

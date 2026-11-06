@@ -1,4 +1,4 @@
-﻿times,负荷,最高温度℃,最低温度℃,平均温度℃,相对湿度(平均),降雨量（mm）
+﻿times,load,max_temperature_c,min_temperature_c,mean_temperature_c,mean_relative_humidity,precipitation_mm
 2016-01-01 00:00:00,3967.259968,19.5,12.1,15.8,63,0
 2016-01-01 00:15:00,3859.196416,19.5,12.1,15.8,63,0
 2016-01-01 00:30:00,3759.877696,19.5,12.1,15.8,63,0

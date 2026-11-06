@@ -1,0 +1,106 @@
+name: ems
+services:
+  influxdb:
+    image: influxdb:1.13.1
+    restart: unless-stopped
+    environment:
+      INFLUXDB_DB: microgrid_ems
+      INFLUXDB_HTTP_AUTH_ENABLED: "false"
+      INFLUXDB_REPORTING_DISABLED: "true"
+    volumes:
+      - influx-data:/var/lib/influxdb
+    healthcheck:
+      test: ["CMD", "influx", "-execute", "SHOW DATABASES"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    image: ems-demo:local
+    build: .
+    restart: unless-stopped
+    environment:
+      EMS_INFLUX_HOST: influxdb
+      EMS_INFLUX_USER: ""
+      EMS_INFLUX_PASSWORD: ""
+      EMS_INFLUX_DATABASE: microgrid_ems
+      GRB_LICENSE_FILE: /run/secrets/gurobi_license
+    secrets:
+      - gurobi_license
+    volumes:
+      - ./outputs:/app/outputs:ro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 60s
+
+  frontend:
+    image: ems-demo:local
+    restart: unless-stopped
+    command: ["python", "-m", "streamlit", "run", "frontend/app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+    environment:
+      EMS_API_URL: http://api:8000
+      EMS_GRAFANA_URL: ${EMS_GRAFANA_URL:-http://localhost:3000}
+    volumes:
+      - ./frontend:/app/frontend:ro
+      - ./.streamlit/config.toml:/app/.streamlit/config.toml:ro
+    ports:
+      - "${EMS_UI_BIND:-127.0.0.1}:${EMS_UI_PORT:-8501}:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=5).read()"]
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 30s
+
+  grafana:
+    image: grafana/grafana:13.2.3
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${EMS_GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${EMS_GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 5s
+      EMS_INFLUX_DATABASE: microgrid_ems
+    ports:
+      - "${EMS_GRAFANA_BIND:-127.0.0.1}:${EMS_GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["public"]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--url", "http://frontend:8501"]
+    depends_on:
+      frontend:
+        condition: service_healthy
+
+volumes:
+  influx-data:
+  grafana-data:
+
+secrets:
+  gurobi_license:
+    file: ./gurobi.lic

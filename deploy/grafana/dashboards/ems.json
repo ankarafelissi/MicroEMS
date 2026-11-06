@@ -1,0 +1,1030 @@
+{
+  "id": null,
+  "uid": "ems-dispatch",
+  "title": "EMS Dispatch",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "utc",
+  "editable": false,
+  "refresh": "5s",
+  "tags": [
+    "ems"
+  ],
+  "time": {
+    "from": "now/d",
+    "to": "now/d+1d"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m"
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "simulation_id",
+        "label": "Plan",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ems-influx"
+        },
+        "query": "SHOW TAG VALUES FROM \"ems_simulations\" WITH KEY = \"simulation_id\"",
+        "definition": "SHOW TAG VALUES FROM \"ems_simulations\" WITH KEY = \"simulation_id\"",
+        "refresh": 2,
+        "hide": 0,
+        "multi": false,
+        "includeAll": false,
+        "options": [],
+        "current": {},
+        "sort": 0
+      },
+      {
+        "name": "generation",
+        "label": "Committed generation",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "ems-influx"
+        },
+        "query": "SELECT \"generation\" FROM \"ems_simulations\" WHERE \"simulation_id\" = '${simulation_id}'",
+        "definition": "SELECT \"generation\" FROM \"ems_simulations\" WHERE \"simulation_id\" = '${simulation_id}'",
+        "refresh": 2,
+        "hide": 2,
+        "multi": false,
+        "includeAll": false,
+        "options": [],
+        "current": {},
+        "sort": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Executed intervals",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT last(\"step\") FROM \"ems_metrics\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Current SOC",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT last(\"soc\") FROM \"ems_metrics\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Net electricity cost",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT last(\"cost_yuan\") FROM \"ems_metrics\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:¥",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Peak grid import",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT last(\"peak_import_kw\") FROM \"ems_metrics\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Grid state",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT last(\"grid_mode\") FROM \"ems_metrics\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "Import"
+                },
+                "2": {
+                  "text": "Export"
+                },
+                "3": {
+                  "text": "Idle"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Battery state",
+      "type": "stat",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT last(\"battery_mode\") FROM \"ems_metrics\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 2,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": {
+                  "text": "Charging"
+                },
+                "2": {
+                  "text": "Discharging"
+                },
+                "3": {
+                  "text": "Idle"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Solar power: forecast and observed",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Day-ahead",
+          "query": "SELECT \"pv_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'day_ahead' AND $timeFilter"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Latest rolling",
+          "query": "SELECT \"pv_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'rolling' AND $timeFilter"
+        },
+        {
+          "refId": "C",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Executed",
+          "query": "SELECT \"pv_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'executed' AND $timeFilter"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Day-ahead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#697585"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latest rolling"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c2ef80"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#62ced4"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Demand: forecast and observed",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Day-ahead",
+          "query": "SELECT \"load_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'day_ahead' AND $timeFilter"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Latest rolling",
+          "query": "SELECT \"load_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'rolling' AND $timeFilter"
+        },
+        {
+          "refId": "C",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Executed",
+          "query": "SELECT \"load_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'executed' AND $timeFilter"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Day-ahead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#697585"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latest rolling"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c2ef80"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#62ced4"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Battery power: positive = discharge",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Day-ahead",
+          "query": "SELECT \"battery_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'day_ahead' AND $timeFilter"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Latest rolling",
+          "query": "SELECT \"battery_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'rolling' AND $timeFilter"
+        },
+        {
+          "refId": "C",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Executed",
+          "query": "SELECT \"battery_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'executed' AND $timeFilter"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Day-ahead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#697585"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latest rolling"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c2ef80"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#62ced4"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Grid power: positive = import",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Day-ahead",
+          "query": "SELECT \"grid_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'day_ahead' AND $timeFilter"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Latest rolling",
+          "query": "SELECT \"grid_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'rolling' AND $timeFilter"
+        },
+        {
+          "refId": "C",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Executed",
+          "query": "SELECT \"grid_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'executed' AND $timeFilter"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Day-ahead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#697585"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latest rolling"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c2ef80"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#62ced4"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "State of charge at interval end",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Day-ahead",
+          "query": "SELECT \"soc\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'day_ahead' AND $timeFilter"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Latest rolling",
+          "query": "SELECT \"soc\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'rolling' AND $timeFilter"
+        },
+        {
+          "refId": "C",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Executed",
+          "query": "SELECT \"soc\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'executed' AND $timeFilter"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Day-ahead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#697585"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latest rolling"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c2ef80"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#62ced4"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "Grid import",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Day-ahead",
+          "query": "SELECT \"import_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'day_ahead' AND $timeFilter"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Latest rolling",
+          "query": "SELECT \"import_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'rolling' AND $timeFilter"
+        },
+        {
+          "refId": "C",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Executed",
+          "query": "SELECT \"import_kw\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'executed' AND $timeFilter"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "kwatt",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Day-ahead"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#697585"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Latest rolling"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c2ef80"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Executed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#62ced4"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "Tariffs",
+      "type": "timeseries",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "ems-influx"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Buy",
+          "query": "SELECT \"buy_price\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'day_ahead' AND $timeFilter"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "Sell",
+          "query": "SELECT \"sell_price\" FROM \"ems_dispatch\" WHERE \"simulation_id\" = '${simulation_id}' AND \"generation\" = '${generation}' AND \"phase\" = 'day_ahead' AND $timeFilter"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:yuan/kWh"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 14,
+      "title": "About the selected simulation",
+      "type": "text",
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 7
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Select a plan or use **Open this plan in Grafana** in the EMS frontend. The frontend link selects the correct UTC day.\n\nEvery point represents a 15-minute simulation interval, regardless of playback speed. SOC is the state at the end of that interval. Only executed observations are exposed.\n\nThe hidden generation variable follows the published snapshot. Incomplete writes are excluded. Refresh reloads the committed generation; all three curves use the same generation.\n\nPV and demand are offline data from different regions and years, scaled to a common scenario; this is not live site telemetry."
+      }
+    }
+  ],
+  "annotations": {
+    "list": []
+  }
+}

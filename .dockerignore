@@ -1,0 +1,13 @@
+.git
+.venv
+.vscode
+__pycache__
+**/__pycache__
+*.pyc
+runtime
+outputs
+shelf
+gurobi.lic
+.env
+.env.*
+.streamlit/secrets.toml

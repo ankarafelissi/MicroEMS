@@ -1,0 +1,12 @@
+# Web demo only. Dockerfile installs CPU PyTorch separately.
+fastapi==0.144.0
+uvicorn==0.54.0
+pydantic==2.14.1
+streamlit==1.66.0
+plotly==6.9.0
+influxdb==5.3.2
+numpy==2.5.3
+pandas==3.0.6
+scipy==1.18.1
+gurobipy==13.0.3
+requests==2.34.2
